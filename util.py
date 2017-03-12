@@ -1,39 +1,4 @@
-import argparse,os,gzip
-
-
-def unpack(path):
-    with gzip.open(path,'rb') as f:
-        content = f.read().decode('unicode_escape')
-    s = []
-    for l in content.split(os.linesep):
-        if l:s.append(tuple(l.split(' ')))
-        elif s:
-            yield tuple(zip(*s))
-            s = []
-
-
-def chunk(sentence):
-    zipped = zip(*sentence)
-    piece = [next(zipped)]
-    for item in zipped:
-        chunktag = item[2]
-        if chunktag.startswith('B') or chunktag.startswith('O'):
-            yield tuple(zip(*piece))
-            piece = [item]
-        elif chunktag.startswith('I'):
-            assert chunktag[1:] == piece[-1][2][1:]
-            piece.append(item)
-        else:raise ValueError('unknown chunk tag: %s' % chunktag)
-    yield tuple(zip(*piece))
-    '''#
-    i = 0
-    for sentence in trainset:
-        for phrase in chunk(sentence):
-            print(' '.join(phrase[0]),'\t',','.join(phrase[2]))
-        i += 1
-        if i == 5:
-            pdb.set_trace()
-    '''#
+import argparse,os
 
 
 def gather():

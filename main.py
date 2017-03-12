@@ -5,6 +5,8 @@ import util,dataset,model
 
 
 def fields():
+    '''Create field objects and train and test data sets.
+    Use the datasets to initialize the vocab objects of the fields.'''
     inputs = torchtext.data.Field(lower = config.lower)
     answers = torchtext.data.Field()
     dsets = dataset.POSTags.splits(inputs,answers)
@@ -30,6 +32,7 @@ def fields():
 
 
 def newmodel(word_vectors):
+    '''Create or load an instance of the model.'''
     if not config.fresh and os.path.exists(config.modelcache):
         if config.gpu >= 0:
             map_location = lambda storage,locatoin : storage.cuda(config.gpu)
@@ -46,6 +49,8 @@ def newmodel(word_vectors):
 
 
 def train_batch(tagger,criterion,opt,batch,v = False):
+    '''Perform training on a single batch of examples, 
+    returning the number of correct answers'''
     tagger.train();opt.zero_grad()
     answer,hidden = tagger(batch)
     answerdata = torch.max(answer,2)[1].view(batch.postags.size()).data
@@ -56,6 +61,8 @@ def train_batch(tagger,criterion,opt,batch,v = False):
 
 
 def train_epoch(tagger,criterion,opt,batcher):
+    '''Perform a training epoch given an iterator of training batches,
+    returning the accuracy of the model on the data set.'''
     batcher.init_epoch()
     correct,total = 0,0
     for j,batch in enumerate(batcher):
@@ -64,7 +71,13 @@ def train_epoch(tagger,criterion,opt,batcher):
     return 100.0*correct/total
 
 
-def train(tagger,batcher):
+def train(tagger,train_batcher,test_batcher):
+    '''Perform training of the model given an iterator of training batches.
+    Exit the training process early on KeyboardInterrupt, or if accuarcy 
+    improvement is sufficiently slow.
+    Save the model between training epochs or upon early exit.
+    Test the accuracy of the model on an iterator of test batches when 
+    training is complete.'''
     criterion = torch.nn.CrossEntropyLoss()
     opt = torch.optim.Adam(tagger.parameters(),lr = config.learningrate)
     lastaccuracy = 0.0
@@ -72,26 +85,28 @@ def train(tagger,batcher):
     for j in range(config.epochs):
         try:
             stime = time.time()
-            print('begin training epoch %i' % (j+1))
-            accuracy = train_epoch(tagger,criterion,opt,train_iter)
-            print('training epoch %i took %.2f seconds' % (j+1,time.time()-stime))
-            print('train accuracy: %.2f' % accuracy)
+            print('... begin epoch %i ...' % (j+1))
+            accuracy = train_epoch(tagger,criterion,opt,train_batcher)
+            print('... epoch %i took %.2f seconds ...' % (j+1,time.time()-stime))
+            print('... model accuracy: %.2f ...' % accuracy)
             improvement = accuracy-lastaccuracy
             lastaccuracy = accuracy
-            print('accuracy / improvement: %.2f / %.2f' % (accuracy,improvement))
+            print('... accuracy / improvement: %.2f / %.2f ...' % (accuracy,improvement))
             if improvement < improvement_threshold:
-                print('improvement is quite low ... ending training')
+                print('... improvement is quite low ... ending training ...')
                 break
             elif improvement > 0.0:torch.save(tagger,config.modelcache)
         except KeyboardInterrupt:
-            print('training forcefully exited!')
+            print('... training forcefully exited ...')
             torch.save(tagger,config.modelcache)
             break
-    accuracy = test(tagger,test_iter)
-    print('test accuracy: %.2f' % accuracy)
+    accuracy = test(tagger,test_batcher)
+    print('... test accuracy: %.2f ...' % accuracy)
 
 
 def test_batch(tagger,batch,v = False):
+    '''Perform testing on a single batch of test examples,
+    returning the number of correct answers.'''
     tagger.eval()
     answer,hidden = tagger(batch)
     answerdata = torch.max(answer,2)[1].view(batch.postags.size()).data
@@ -100,12 +115,34 @@ def test_batch(tagger,batch,v = False):
 
 
 def test(tagger,batcher):
+    '''Perform testing given an iterator of testing batches,
+    returning the accuracy of the model on the data set.'''
     tagger.eval();batcher.init_epoch()
     correct,total = 0,0
     for j,batch in enumerate(batcher):
         correct += test_batch(tagger,batch,j == 0)
         total += batch.batch_size*batch.postags.size()[0]
     return 100.0*correct/total
+
+
+def work(tagger,inputs,answers):
+    #text = text + ['<pad>'] * (math.ceil(len(text) / self.batch_size) *
+    #                           self.batch_size - len(text))
+    dsets = dataset.WikiData.splits(inputs,answers)
+
+    pdb.set_trace()
+
+    #data = inputs.numericalize(sentences,
+    #    device = tagger.config.gpu,train = False)
+
+    pdb.set_trace()
+
+    #data = data.view(self.batch_size, -1).t().contiguous()
+    #dataset = Dataset(examples=self.dataset.examples, fields=[
+    #    ('text', TEXT), ('target', TEXT)])
+
+    #batch = torchtext.data.Batch.fromvars(
+    #    dataset,len(sentences),train = False,sentence = data)
 
 
 calcloss = lambda c,a,b : sum([c(a[:,i],b[:,i]) for i in range(a.size()[1])])
@@ -122,8 +159,9 @@ if __name__ == '__main__':
     config.n_embed,config.d_out = len(inputs.vocab),len(answers.vocab)
     tagger = newmodel(inputs.vocab.vectors)
 
-    if config.epochs:train(tagger,train_iter)
+    if config.epochs:train(tagger,train_iter,test_iter)
     
     print('tagger could not run on target problem...')
+    #work(tagger,inputs,answers)
 
 
