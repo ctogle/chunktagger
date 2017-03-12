@@ -126,23 +126,21 @@ def test(tagger,batcher):
 
 
 def work(tagger,inputs,answers):
-    #text = text + ['<pad>'] * (math.ceil(len(text) / self.batch_size) *
-    #                           self.batch_size - len(text))
-    dsets = dataset.WikiData.splits(inputs,answers)
-
-    pdb.set_trace()
-
-    #data = inputs.numericalize(sentences,
-    #    device = tagger.config.gpu,train = False)
-
-    pdb.set_trace()
-
-    #data = data.view(self.batch_size, -1).t().contiguous()
-    #dataset = Dataset(examples=self.dataset.examples, fields=[
-    #    ('text', TEXT), ('target', TEXT)])
-
-    #batch = torchtext.data.Batch.fromvars(
-    #    dataset,len(sentences),train = False,sentence = data)
+    '''As an example of totally distinct data usage, create a dataset of
+    Wikipedia page sentences, a single batch for all of the sentences, 
+    and run the model on them.'''
+    dset = dataset.WikiData.splits(inputs,answers)[0]
+    batch = torchtext.data.Batch(dset.examples,dset,config.gpu,False)
+    tagger.eval()
+    answer,hidden = tagger(batch)
+    answerdata = torch.max(answer,2)[1].view(batch.postags.size()).data
+    for x,y in zip(batch.sentence.transpose(0,1),answerdata.transpose(0,1)):
+        sentence = [inputs.vocab.itos[z] for z in x.data]
+        postags = [answers.vocab.itos[z] for z in y]
+        for u,v in zip(sentence,postags):
+            if u == v == '<pad>':continue
+            print('\t::'+u+'::'+v+'::')
+        input('... press enter to continue ...')
 
 
 calcloss = lambda c,a,b : sum([c(a[:,i],b[:,i]) for i in range(a.size()[1])])
@@ -161,7 +159,6 @@ if __name__ == '__main__':
 
     if config.epochs:train(tagger,train_iter,test_iter)
     
-    print('tagger could not run on target problem...')
-    #work(tagger,inputs,answers)
+    if config.wiki:work(tagger,inputs,answers)
 
 

@@ -102,20 +102,12 @@ class POSTags(torchtext.data.TabularDataset):
 class WikiData(POSTags):
 
 
-    #urls = (
-    #    'http://www.cnts.ua.ac.be/conll2000/chunking/test.txt.gz',
-    #    'http://www.cnts.ua.ac.be/conll2000/chunking/train.txt.gz',
-    #        )
     urls = ()
+    filenames = ()
+    dirname = 'Wiki_data'
     queries = (
         'Python (programming language)',
             )
-    #filenames = (
-    #    'test.txt.gz',
-    #    'train.txt.gz',
-    #        )
-    filenames = ()
-    dirname = 'Wiki_data'
 
 
     @staticmethod
@@ -125,11 +117,16 @@ class WikiData(POSTags):
         sentence = ''
         for word in paragraph.split(' '):
             if end.findall(word):
-                sentences.append(sentence+' '+word)
+                sentence += ' '+word
+                sentence = sentence.replace('.',' .')
+                sentence = sentence.replace(',',' ,')
+                sentence = sentence.replace('\'',' \'')
+                if os.linesep in sentence:
+                    sentence = sentence[sentence.rfind(os.linesep):]
+                yield sentence
                 sentence = ''
             elif sentence:sentence += ' '+word
             else:sentence += word
-        return sentences
 
 
     @staticmethod
@@ -142,7 +139,6 @@ class WikiData(POSTags):
             print('... found \'%s\' at URL:\n\t <%s> ...' % (wp.title,wp.url))
             paragraphs = wp.content.split(os.linesep)
             for p in paragraphs:sentences.extend(WikiData.breakparagraph(p))
-        #except wikipedia.exceptions.PageError:
         except wikipedia.exceptions.DisambiguationError:
             print('... query \'%s\' not found on wikipedia ...' % query)
         return sentences
@@ -155,33 +151,29 @@ class WikiData(POSTags):
         documents = {}
         for query in cls.queries:
             filepath = os.path.join(path,query+'.wikipage')
+            documents[query] = []
             if os.path.exists(filepath):
                 with open(filepath,'r') as fh:
-                    documents[query] = fh.read()
+                    for sentence in fh.readlines():
+                        documents[query].append(sentence.strip().split(' '))
             else:
-                documents[query] = WikiData.wiki(query)
+                sentencegen = WikiData.wiki(query)
                 with open(filepath,'w') as fh:
-                    fh.write(documents[query])
-
-        # want to save the results of the queries to prevent urlrequests later
-        # want to pretokenize the sentences a tiny bit
-        # should filter out sentences of zero concern
-
+                    for sentence in sentencegen:
+                        fh.write(sentence+os.linesep)
+                        documents[query].append(sentence.split(' '))
         jpath = os.path.join(path,'wiki.txt.json')
         # may skip the writing if jpath exists...
         with open(jpath,'w') as jh:
             for q in documents:
                 d = documents[q] 
                 for s in d:
-
-                    pdb.set_trace()
-
                     line = {
-                        'sentence':data[0],
+                        'sentence':s,
+                        'postags':s,
                             }
                     json.dump(line,jh)
                     jh.write(os.linesep)
-
         return path
 
 
