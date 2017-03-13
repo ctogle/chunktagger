@@ -84,16 +84,15 @@ class POSTags(torchtext.data.TabularDataset):
 
 
     @classmethod
-    def splits(cls,text_field,label_field,root = '.',
+    def splits(cls,text_field,label_fields,root = '.',
             train = 'train.txt.json',validation = None,test = 'test.txt.json'):
         path = cls.download_or_unzip(root)
         return super(POSTags,cls).splits(
             os.path.join(path,''),train,validation,test,
             format = 'json',fields = {
                 'sentence': ('sentence',text_field),
-                'postags': ('postags',label_field),
-                #'pos': ('poss',label_field),
-                #'chunk': ('chunks',label_field),
+                'postags': ('postags',label_fields[0]),
+                'chunks': ('chunks',label_fields[1]),
                     })
             #        },
             #filter_pred = lambda ex: ex.label != '-')
@@ -171,6 +170,7 @@ class WikiData(POSTags):
                     line = {
                         'sentence':s,
                         'postags':s,
+                        'chunks':s,
                             }
                     json.dump(line,jh)
                     jh.write(os.linesep)

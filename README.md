@@ -2,7 +2,7 @@
 Part-of-speech tagging/chunking using recurrent neural networks.
 
 chunktagger provides a script (main.py) for creating, training, and using a recurrent neural network model 
-(primarily LSTM module provided by pytorch) to perform part-of-speech tagging and chunking (TODO) on sentences.
+(primarily LSTM module provided by pytorch) to perform part-of-speech tagging and chunking on sentences.
 It was developed using the Anaconda Python 3 distribution with pytorch and torchtext installed as well.
 
 For usage, run:
@@ -16,9 +16,11 @@ NOTE: No known validation data set is available.
 Data sets and word embedding vectors are downloaded when main.py is run (if they are not present locally).
 The glove.42B word embedding vectors are used by default (http://nlp.stanford.edu/data/glove.42B.300d.zip).
 
-Within 10 training epochs, testing accuracy is ~97%. 
+Within 10 training epochs, testing accuracy is ~97% (prior to implementing MultiTagger). 
 This number is somewhat inflated because the model uses batches of sentences which are heavily padded, 
 and the associated pad tokens are readily tagged and mostly irrelevant to the underlying task.
+
+For training and testing, a progress bar is provided to monitor running accuracy and completion of the epoch.
 
 The model is saved after each epoch, or upon forceful exit (keyboard interrupt) during training.
 The model is loaded if present (unless --fresh option is provided, indicating a new model should be used).
@@ -29,8 +31,8 @@ Performance is hampered by relatively disjoint vocabularies between this page an
 Despite this, the model appears to provide mostly accurate tagging. 
 
 TODO:
-  Perform sentence chunking simulatenously with part-of-speech tagging.
   Testing on GPUs (no CUDA available on system on which chunktagger was developed).
   Optimization of architecture defining hyperparameters (e.g. number of LSTM layers, embedding dimension, etc.).
   Infrastructure for more arbitrary data sources (without requiring subclasses for specific data sources).
+  Fix the --wiki option to work with MultiTagger implementation
 

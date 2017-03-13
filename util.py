@@ -9,6 +9,7 @@ def gather():
     parser.add_argument('--cachedir',type = str,default = cachedir)
     parser.add_argument('--vectorcache',type = str,default = vectorcache)
     parser.add_argument('--modelcache',type = str,default = modelcache)
+    parser.add_argument('--n_taggers',type = int,default = 2)
     parser.add_argument('--trainset',type = str,default = 'train.txt.gz')
     parser.add_argument('--testset',type = str,default = 'test.txt.gz')
     parser.add_argument('--fresh',action = 'store_true')

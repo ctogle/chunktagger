@@ -8,10 +8,10 @@ def fields():
     '''Create field objects and train and test data sets.
     Use the datasets to initialize the vocab objects of the fields.'''
     inputs = torchtext.data.Field(lower = config.lower)
-    answers = torchtext.data.Field()
+    answers = [torchtext.data.Field() for x in range(config.n_taggers)]
     dsets = dataset.POSTags.splits(inputs,answers)
     inputs.build_vocab(*dsets)
-    answers.build_vocab(dsets[0])
+    for a in answers:a.build_vocab(dsets[0])
     if config.word_vectors:
         if os.path.isfile(config.vectorcache):
             inputs.vocab.vectors = torch.load(config.vectorcache)
@@ -40,7 +40,7 @@ def newmodel(word_vectors):
         tagger = torch.load(config.modelcache,map_location = map_location)
         print('... loaded cached model: %s ...' % config.modelcache)
     else:
-        tagger = model.POSTagger(config)
+        tagger = model.MultiTagger(config)
         if config.word_vectors:
             tagger.encoder.weight.data = word_vectors
             if config.gpu >= 0 and torch.cuda.is_available():tagger.cuda()
@@ -48,26 +48,28 @@ def newmodel(word_vectors):
     return tagger
 
 
-def train_batch(tagger,criterion,opt,batch,v = False):
+def train_batch(tagger,crit,opt,batch,v = False):
     '''Perform training on a single batch of examples, 
     returning the number of correct answers'''
     tagger.train();opt.zero_grad()
-    answer,hidden = tagger(batch)
-    answerdata = torch.max(answer,2)[1].view(batch.postags.size()).data
-    loss = calcloss(criterion,answer,batch.postags)
+    bdata = batch.postags,batch.chunks
+    tdata = tagger(batch)
+    loss = sum([sloss(crit,o[0],c) for o,c in zip(tdata,bdata)])
     loss.backward();opt.step()
-    if v:print(posprint(answerdata[:,0],batch.postags.data[:,0]))
-    return (answerdata == batch.postags.data).sum()
+    if v:print(sprint(flatten([spair(o,c) for o,c in zip(tdata,bdata)])))
+    return sum([ncorrect(o[0],c) for o,c in zip(tdata,bdata)])
 
 
-def train_epoch(tagger,criterion,opt,batcher):
+def train_epoch(tagger,crit,opt,batcher):
     '''Perform a training epoch given an iterator of training batches,
     returning the accuracy of the model on the data set.'''
     batcher.init_epoch()
     correct,total = 0,0
     for j,batch in enumerate(batcher):
-        correct += train_batch(tagger,criterion,opt,batch,j == 0)
-        total += batch.batch_size*batch.postags.size()[0]
+        bdata = batch.postags,batch.chunks
+        correct += train_batch(tagger,crit,opt,batch,j == 0)
+        total += sum([batch.batch_size*b.size()[0] for b in bdata])
+        progress(j,len(batcher),100.0*correct/total)
     return 100.0*correct/total
 
 
@@ -100,6 +102,7 @@ def train(tagger,train_batcher,test_batcher):
             print('... training forcefully exited ...')
             torch.save(tagger,config.modelcache)
             break
+    print('... testing accuracy ...')
     accuracy = test(tagger,test_batcher)
     print('... test accuracy: %.2f ...' % accuracy)
 
@@ -108,10 +111,10 @@ def test_batch(tagger,batch,v = False):
     '''Perform testing on a single batch of test examples,
     returning the number of correct answers.'''
     tagger.eval()
-    answer,hidden = tagger(batch)
-    answerdata = torch.max(answer,2)[1].view(batch.postags.size()).data
-    if v:print(posprint(answerdata[:,0],batch.postags.data[:,0]))
-    return (answerdata == batch.postags.data).sum()
+    bdata = batch.postags,batch.chunks
+    tdata = tagger(batch)
+    if v:print(sprint(flatten([spair(o,c) for o,c in zip(tdata,bdata)])))
+    return sum([ncorrect(o[0],c) for o,c in zip(tdata,bdata)])
 
 
 def test(tagger,batcher):
@@ -120,8 +123,10 @@ def test(tagger,batcher):
     tagger.eval();batcher.init_epoch()
     correct,total = 0,0
     for j,batch in enumerate(batcher):
+        bdata = batch.postags,batch.chunks
         correct += test_batch(tagger,batch,j == 0)
-        total += batch.batch_size*batch.postags.size()[0]
+        total += sum([batch.batch_size*b.size()[0] for b in bdata])
+        progress(j,len(batcher),100.0*correct/total)
     return 100.0*correct/total
 
 
@@ -132,7 +137,11 @@ def work(tagger,inputs,answers):
     dset = dataset.WikiData.splits(inputs,answers)[0]
     batch = torchtext.data.Batch(dset.examples,dset,config.gpu,False)
     tagger.eval()
-    answer,hidden = tagger(batch)
+
+    #answer,hidden = tagger(batch)
+    POSoutput,chunkoutput = tagger(batch)
+    answer,hidden = POSoutput
+
     answerdata = torch.max(answer,2)[1].view(batch.postags.size()).data
     for x,y in zip(batch.sentence.transpose(0,1),answerdata.transpose(0,1)):
         sentence = [inputs.vocab.itos[z] for z in x.data]
@@ -143,8 +152,24 @@ def work(tagger,inputs,answers):
         input('... press enter to continue ...')
 
 
-calcloss = lambda c,a,b : sum([c(a[:,i],b[:,i]) for i in range(a.size()[1])])
-posprint = lambda a,b : '\n'.join(['\t::'+itos(p[0])+'::'+itos(p[1])+'::' for p in zip(a,b)])
+def progress(b,blen,accu,astr = '[{0}{1}] {2:.2f}% accuracy: {3:.2f}',alen = 40):
+    '''Provide a progress bar on stdout between batches'''
+    perc = 100.0*b/blen
+    anum = ((alen*(b+1))//100)
+    print(astr.format('#'*anum,' '*(alen-anum),perc,accu),end='\r')
+
+
+'''For counting correct answers'''
+ncorrect = lambda a,c : (adata(a,c.size()) == c.data).sum()
+'''For reaching answer indices'''
+adata = lambda a,s : torch.max(a,2)[1].view(s).data
+'''For summing losses across sentences'''
+sloss = lambda c,a,b : sum([c(a[:,i],b[:,i]) for i in range(a.size()[1])])
+'''For printing of examples'''
+flatten = lambda seqs : [item for seq in seqs for item in seq]
+spair = lambda o,c : (adata(o[0],c.size())[:,0],c.data[:,0])
+sline = lambda a,b,c,d : '\t::'+itos(0,a)+'::'+itos(0,b)+'::'+itos(1,c)+'::'+itos(1,d)+'::'
+sprint = lambda seq : '\n'.join([sline(*p) for p in zip(*seq)])
 
 
 if __name__ == '__main__':
@@ -152,13 +177,16 @@ if __name__ == '__main__':
 
     inputs,answers,train_iter,test_iter = fields()
 
-    itos = lambda x : answers.vocab.itos[x].center(8)
+    itos = lambda j,x : answers[j].vocab.itos[x].center(8)
 
-    config.n_embed,config.d_out = len(inputs.vocab),len(answers.vocab)
+    config.n_embed = len(inputs.vocab)
+    config.d_outs = [len(a.vocab) for a in answers]
     tagger = newmodel(inputs.vocab.vectors)
 
     if config.epochs:train(tagger,train_iter,test_iter)
     
-    if config.wiki:work(tagger,inputs,answers)
+    if config.wiki:
+        raise NotImplementedError('MultiTagger implementation temporarily broke work()')
+        work(tagger,inputs,answers)
 
 
