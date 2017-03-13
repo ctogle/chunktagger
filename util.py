@@ -24,6 +24,7 @@ def gather():
     parser.add_argument('--batch_size',type = int,default = 128)
     parser.add_argument('--learningrate',type = float,default = 0.001)
     parser.add_argument('--gpu',type = int,default = -1)
+    parser.add_argument('--print_example',action = 'store_true')
     parser.add_argument('--wiki',action = 'store_true')
     config = parser.parse_args()
     return config

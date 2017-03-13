@@ -63,13 +63,14 @@ def train_batch(tagger,crit,opt,batch,v = False):
 def train_epoch(tagger,crit,opt,batcher):
     '''Perform a training epoch given an iterator of training batches,
     returning the accuracy of the model on the data set.'''
+    stime = time.time()
     batcher.init_epoch()
     correct,total = 0,0
     for j,batch in enumerate(batcher):
         bdata = batch.postags,batch.chunks
-        correct += train_batch(tagger,crit,opt,batch,j == 0)
+        correct += train_batch(tagger,crit,opt,batch,j == 0 and config.print_example)
         total += sum([batch.batch_size*b.size()[0] for b in bdata])
-        progress(j,len(batcher),100.0*correct/total)
+        progress(j,len(batcher),100.0*correct/total,stime)
     return 100.0*correct/total
 
 
@@ -83,7 +84,7 @@ def train(tagger,train_batcher,test_batcher):
     criterion = torch.nn.CrossEntropyLoss()
     opt = torch.optim.Adam(tagger.parameters(),lr = config.learningrate)
     lastaccuracy = 0.0
-    improvement_threshold = 0.01
+    improvement_threshold = 0.0
     for j in range(config.epochs):
         try:
             stime = time.time()
@@ -120,13 +121,14 @@ def test_batch(tagger,batch,v = False):
 def test(tagger,batcher):
     '''Perform testing given an iterator of testing batches,
     returning the accuracy of the model on the data set.'''
+    stime = time.time()
     tagger.eval();batcher.init_epoch()
     correct,total = 0,0
     for j,batch in enumerate(batcher):
         bdata = batch.postags,batch.chunks
-        correct += test_batch(tagger,batch,j == 0)
+        correct += test_batch(tagger,batch,j == 0 and config.print_example)
         total += sum([batch.batch_size*b.size()[0] for b in bdata])
-        progress(j,len(batcher),100.0*correct/total)
+        progress(j,len(batcher),100.0*correct/total,stime)
     return 100.0*correct/total
 
 
@@ -152,11 +154,14 @@ def work(tagger,inputs,answers):
         input('... press enter to continue ...')
 
 
-def progress(b,blen,accu,astr = '[{0}{1}] {2:.2f}% accuracy: {3:.2f}',alen = 40):
+prog_str = '[{0}{1}] complete: {2:.2f} % , elapsed: {3:.2f} s , accuracy: {4:.2f} %'
+def progress(b,blen,accu,stime,astr = prog_str,alen = 40):
     '''Provide a progress bar on stdout between batches'''
-    perc = 100.0*b/blen
-    anum = ((alen*(b+1))//100)
-    print(astr.format('#'*anum,' '*(alen-anum),perc,accu),end='\r')
+    perc = 100.0*b/(blen-1)
+    anum = int(perc*alen//100)
+    elapsed = time.time()-stime
+    echar = '\r' if perc < 100 else '\n'
+    print(prog_str.format('|'*anum,'-'*(alen-anum),perc,elapsed,accu),end = echar)
 
 
 '''For counting correct answers'''
