@@ -1,6 +1,5 @@
 import torchtext
 import wikipedia,os,re,urllib,json,gzip,pdb
-
 import util
 
 
@@ -33,6 +32,8 @@ class POSTags(torchtext.data.TabularDataset):
 
     @staticmethod
     def chunk(sentence):
+        '''Generator for sentence chunks where sentence is a sequence 
+        of sequences of the form (word, POS tag, chunk tag).'''
         zipped = zip(*sentence)
         piece = [next(zipped)]
         for item in zipped:
@@ -41,19 +42,12 @@ class POSTags(torchtext.data.TabularDataset):
                 yield tuple(zip(*piece))
                 piece = [item]
             elif chunktag.startswith('I'):
-                assert chunktag[1:] == piece[-1][2][1:]
+                #assert chunktag[1:] == piece[-1][2][1:]
                 piece.append(item)
-            else:raise ValueError('unknown chunk tag: %s' % chunktag)
-        yield tuple(zip(*piece))
-        '''#
-        i = 0
-        for sentence in trainset:
-            for phrase in chunk(sentence):
-                print(' '.join(phrase[0]),'\t',','.join(phrase[2]))
-            i += 1
-            if i == 5:
+            else:
                 pdb.set_trace()
-        '''#
+                raise ValueError('unknown chunk tag: %s' % chunktag)
+        yield tuple(zip(*piece))
 
 
     @classmethod
@@ -62,24 +56,22 @@ class POSTags(torchtext.data.TabularDataset):
         if not os.path.isdir(path):os.mkdir(path)
         for url,filename in zip(cls.urls,cls.filenames):
             zpath = os.path.join(path,filename)
-            if os.path.isfile(zpath):
-                print('zpath already exists: %s' % zpath)
-            else:
-                print('downloading: %s' % url)
+            if not os.path.isfile(zpath):
+                print('... downloading: %s ...' % url)
                 urllib.request.urlretrieve(url,zpath)
-                print('downloaded: %s' % url)
+                print('... downloaded: %s ...' % url)
             zdata = POSTags.unpack(zpath)
             jpath = zpath[:zpath.rfind('.')]+'.json'
-            # may skip the writing if jpath exists...
-            with open(jpath,'w') as jh:
-                for data in zdata:
-                    line = {
-                        'sentence':data[0],
-                        'postags':data[1],
-                        'chunks':data[2],
-                            }
-                    json.dump(line,jh)
-                    jh.write(os.linesep)
+            if not os.path.exists(jpath):
+                with open(jpath,'w') as jh:
+                    for data in zdata:
+                        line = {
+                            'sentence':data[0],
+                            'postags':data[1],
+                            'chunks':data[2],
+                                }
+                        json.dump(line,jh)
+                        jh.write(os.linesep)
         return path
 
 
@@ -162,18 +154,18 @@ class WikiData(POSTags):
                         fh.write(sentence+os.linesep)
                         documents[query].append(sentence.split(' '))
         jpath = os.path.join(path,'wiki.txt.json')
-        # may skip the writing if jpath exists...
-        with open(jpath,'w') as jh:
-            for q in documents:
-                d = documents[q] 
-                for s in d:
-                    line = {
-                        'sentence':s,
-                        'postags':s,
-                        'chunks':s,
-                            }
-                    json.dump(line,jh)
-                    jh.write(os.linesep)
+        if not os.path.exists(jpath):
+            with open(jpath,'w') as jh:
+                for q in documents:
+                    d = documents[q] 
+                    for s in d:
+                        line = {
+                            'sentence':s,
+                            'postags':s,
+                            'chunks':s,
+                                }
+                        json.dump(line,jh)
+                        jh.write(os.linesep)
         return path
 
 
@@ -181,5 +173,30 @@ class WikiData(POSTags):
     def splits(cls,*args,root = '.',
             train = None,validation = None,test = 'wiki.txt.json'):
         return super(WikiData,cls).splits(*args,root,train,validation,test)
+
+
+    @staticmethod
+    def gen(tagger,inputs,answers):
+        '''As an example of totally distinct data usage, create a Dataset of
+        Wikipedia page sentences, a single Batch for all of the sentences, 
+        and run the model on them. Yield the tag results of each sentence.'''
+        dset = WikiData.splits(inputs,answers)[0]
+        batch = torchtext.data.Batch(dset.examples,dset,tagger.config.gpu,False)
+        tagger.eval()
+        bdata = batch.postags,batch.chunks
+        tdata = [util.adata(o[0],c.size()) for o,c in zip(tagger(batch),bdata)]
+        for i,sentence in enumerate(batch.sentence.transpose(0,1).data):
+            words = [[util.iitos(x).strip()] for x in sentence]
+            spacer = max([len(w[0]) for w in words])+2
+            for j,td in enumerate(tdata):
+                tdat = td.transpose(0,1)
+                tags = [util.aitos(j,x).strip() for x in tdat[i,:]]
+                words = [l+[t] for l,t in zip(words,tags)]
+            reconstructed = []
+            for w in words:
+                if w[0] == '<pad>':break
+                reconstructed.append(tuple(w))
+                print('::'.join([l.center(spacer) for l in w]))
+            yield zip(*reconstructed)
 
 

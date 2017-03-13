@@ -1,4 +1,25 @@
+import torch
 import argparse,os
+
+
+'''For counting correct answers'''
+ncorrect = lambda a,c : (adata(a,c.size()) == c.data).sum()
+'''For reaching answer indices'''
+adata = lambda a,s : torch.max(a,2)[1].view(s).data
+'''For summing losses across sentences'''
+sloss = lambda c,a,b : sum([c(a[:,i],b[:,i]) for i in range(a.size()[1])])
+'''For printing of examples'''
+flatten = lambda seqs : [item for seq in seqs for item in seq]
+spair = lambda o,c : (adata(o[0],c.size())[:,0],c.data[:,0])
+sline = lambda a,b,c,d : '\t::'+aitos(0,a)+'::'+aitos(0,b)+'::'+aitos(1,c)+'::'+aitos(1,d)+'::'
+sprint = lambda seq : '\n'.join([sline(*p) for p in zip(*seq)])
+
+
+iitos,aitos = None,None
+def translations(inputs,answers):
+    global iitos,aitos
+    iitos = lambda x : inputs.vocab.itos[x].center(8)
+    aitos = lambda j,x : answers[j].vocab.itos[x].center(8)
 
 
 def gather():
