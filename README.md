@@ -31,8 +31,10 @@ Performance is hampered by relatively disjoint vocabularies between this page an
 Despite this, the model appears to provide mostly accurate tagging. 
 
 TODO:
+
   Testing on GPUs (no CUDA available on system on which chunktagger was developed).
+
   Optimization of architecture defining hyperparameters (e.g. number of LSTM layers, embedding dimension, etc.).
+
   Infrastructure for more arbitrary data sources (without requiring subclasses for specific data sources).
-  Fix the --wiki option to work with MultiTagger implementation
 
