@@ -15,6 +15,8 @@ class POSTags(torchtext.data.TabularDataset):
         'train.txt.gz',
             )
     dirname = '.POSTag_data'
+    text_fields = ('sentence','reversal')
+    tag_fields = ('postags','chunks')
 
 
     @staticmethod
@@ -64,14 +66,15 @@ class POSTags(torchtext.data.TabularDataset):
             jpath = zpath[:zpath.rfind('.')]+'.json'
             if not os.path.exists(jpath):
                 with open(jpath,'w') as jh:
+                    field_set = set(cls.text_fields+cls.tag_fields)
                     for data in zdata:
                         line = {
-                            #'sentence':data[0],
                             'sentence':data[0],
                             'reversal':data[0][::-1],
                             'postags':data[1],
                             'chunks':data[2],
                                 }
+                        assert set(lines.keys()) == field_set
                         json.dump(line,jh)
                         jh.write(os.linesep)
         return path
@@ -81,14 +84,12 @@ class POSTags(torchtext.data.TabularDataset):
     def splits(cls,text_field,label_fields,root = '.',
             train = 'train.txt.json',validation = None,test = 'test.txt.json'):
         path = cls.download_or_unzip(root)
+        fields = dict(
+            [(k,(k,text_field)) for k in cls.text_fields]+\
+            [(k,(k,label_fields[j])) for j,k in enumerate(cls.tag_fields)])
         return super(POSTags,cls).splits(
             os.path.join(path,''),train,validation,test,
-            format = 'json',fields = {
-                'sentence': ('sentence',text_field),
-                'reversal': ('reversal',text_field),
-                'postags': ('postags',label_fields[0]),
-                'chunks': ('chunks',label_fields[1]),
-                    })
+            format = 'json',fields = fields)
 
 
 class WikiData(POSTags):

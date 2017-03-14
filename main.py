@@ -4,11 +4,11 @@ import os,time,pdb
 import util,dataset,model
 
 
-def fields():
+def fields(dclass = dataset.POSTags):
     '''Create field objects and train and test data sets.
     Use the datasets to initialize the vocab objects of the fields.'''
     inputs = torchtext.data.Field(lower = config.lower)
-    answers = [torchtext.data.Field() for x in range(config.n_taggers)]
+    answers = [torchtext.data.Field() for x in range(len(dclass.tag_fields))]
     dsets = dataset.POSTags.splits(inputs,answers)
     inputs.build_vocab(*dsets)
     for a in answers:a.build_vocab(dsets[0])
@@ -54,26 +54,26 @@ def train_batch(tagger,crit,opt,batch,v = False):
     '''Perform training on a single batch of examples, 
     returning the number of correct answers'''
     tagger.train();opt.zero_grad()
-    bdata = batch.postags,batch.chunks
+    bdata = get_bdata(batch)
     tdata = tagger(batch)
     loss = sum([util.sloss(crit,o[0],c) for o,c in zip(tdata,bdata)])
     loss.backward();opt.step()
     if v:print(util.sprint(util.flatten([util.spair(o,c) for o,c in zip(tdata,bdata)])))
-    return sum([util.ncorrect(o[0],c) for o,c in zip(tdata,bdata)])
+    return [util.ncorrect(o[0],c) for o,c in zip(tdata,bdata)]
 
 
 def train_epoch(tagger,crit,opt,batcher,epoch,stime):
     '''Perform a training epoch given an iterator of training batches,
     returning the accuracy of the model on the data set.'''
-    progress(epoch,-1,len(batcher),-1,stime)
+    progress(epoch,-1,len(batcher),[-1]*config.n_taggers,0,stime)
     batcher.init_epoch()
-    correct,total = 0,0
+    corrects,total = [0]*config.n_taggers,0
     for j,batch in enumerate(batcher):
-        bdata = batch.postags,batch.chunks
-        correct += train_batch(tagger,crit,opt,batch,j == 0 and config.print_example)
-        total += sum([batch.batch_size*b.size()[0] for b in bdata])
-        progress(epoch,j,len(batcher),100.0*correct/total,stime)
-    return 100.0*correct/total
+        newcorrects = train_batch(tagger,crit,opt,batch,j == 0 and config.print_example)
+        corrects = [x+y for x,y in zip(corrects,newcorrects)]
+        total += batch.batch_size*get_bdata(batch)[0].size()[0]
+        progress(epoch,j,len(batcher),corrects,total,stime)
+    return 100.0*sum(corrects)/(total*config.n_taggers)
 
 
 def train(tagger,train_batcher,test_batcher):
@@ -84,9 +84,10 @@ def train(tagger,train_batcher,test_batcher):
     Test the accuracy of the model on an iterator of test batches when 
     training is complete.'''
     criterion = torch.nn.CrossEntropyLoss()
-    #opt = torch.optim.Adam(tagger.parameters(),lr = config.learningrate)
-    #opt = torch.optim.ASGD(tagger.parameters(),lr = config.learningrate)
-    opt = torch.optim.RMSprop(tagger.parameters(),lr = config.learningrate)
+    if hasattr(torch.optim,config.optimizer):
+        optclass = torch.optim.__getattribute__(config.optimizer)
+        opt = optclass(tagger.parameters(),lr = config.learningrate)
+    else:raise ValueError('... unavailable optimizer: %s ...' % config.optimizer)
     lastaccuracy = 0.0
     improvement_threshold = 0.0
     print('... training model ...')
@@ -102,39 +103,39 @@ def train(tagger,train_batcher,test_batcher):
                 break
             elif improvement > 0.0:torch.save(tagger,config.modelcache)
         except KeyboardInterrupt:
-            progress(j,0,1,lastaccuracy if j > 0 else -1,stime)
+            progress(j,0,1,[-1]*config.n_taggers,0,stime)
             print('... training forcefully exited ...')
             torch.save(tagger,config.modelcache)
             break
     print('... testing model ...')
     print(prog_header)
     accuracy = test(tagger,test_batcher)
-    print('... final model accuracy: %.2f ...' % accuracy)
+    print('... final model task-averaged accuracy: %.2f ...' % accuracy)
 
 
 def test_batch(tagger,batch,v = False):
     '''Perform testing on a single batch of test examples,
     returning the number of correct answers.'''
     tagger.eval()
-    bdata = batch.postags,batch.chunks
+    bdata = get_bdata(batch)
     tdata = tagger(batch)
     if v:print(util.sprint(util.flatten([util.spair(o,c) for o,c in zip(tdata,bdata)])))
-    return sum([util.ncorrect(o[0],c) for o,c in zip(tdata,bdata)])
+    return [util.ncorrect(o[0],c) for o,c in zip(tdata,bdata)]
 
 
 def test(tagger,batcher):
     '''Perform testing given an iterator of testing batches,
     returning the accuracy of the model on the data set.'''
     stime = time.time()
-    progress(0,-1,len(batcher),-1,stime)
+    progress(0,-1,len(batcher),[-1]*config.n_taggers,0,stime)
     tagger.eval();batcher.init_epoch()
-    correct,total = 0,0
+    corrects,total = [0]*config.n_taggers,0
     for j,batch in enumerate(batcher):
-        bdata = batch.postags,batch.chunks
-        correct += test_batch(tagger,batch,j == 0 and config.print_example)
-        total += sum([batch.batch_size*b.size()[0] for b in bdata])
-        progress(0,j,len(batcher),100.0*correct/total,stime)
-    return 100.0*correct/total
+        newcorrects = test_batch(tagger,batch,j == 0 and config.print_example)
+        corrects = [x+y for x,y in zip(corrects,newcorrects)]
+        total += batch.batch_size*get_bdata(batch)[0].size()[0]
+        progress(0,j,len(batcher),corrects,total,stime)
+    return 100.0*sum(corrects)/(total*config.n_taggers)
 
 
 def work(tagger,inputs,answers):
@@ -147,29 +148,21 @@ def work(tagger,inputs,answers):
         input('... press enter to continue ...')
 
 
-prog_header = 'Epoch '+' '*40+'   Complete   Elapsed   Accuracy'
-prog_string = '\r {0:3d}  [{1}{2}]   {3:5.1f}% {4:8.1f}s {5:9.2f}%'
-def progress(e,b,blen,accu,stime,astr = prog_string,alen = 40):
-    '''Provide a progress bar on stdout between batches'''
-    p = 100.0*(b+1)/blen
-    n = int(p*alen//100)
-    t = time.time()-stime
-    echar = '\r' if p < 100 else '\n'
-    print(prog_string.format(e+1,'|'*n,'-'*(alen-n),p,t,accu),end = echar)
-
-
 if __name__ == '__main__':
     config = util.gather()
 
-    # WOULD BE NICE TO TRACK PER TASK ACCURACY
-    # WOULD BE NICE TO PRINT IMPROVEMENT DURING WITH PROGRESS BAR
-    # SHOULD CHUNK TAGGING PROCESS BE SPLIT OVER '-' CHARACTER??
-
     inputs,answers,train_iter,test_iter = fields()
 
+    fkeys = train_iter.dataset.fields.keys()
+    bkeys = [k for k in fkeys if train_iter.dataset.fields[k] in answers]
+    get_bdata = lambda b : tuple(b.__getattribute__(s) for s in bkeys)
+
+    config.n_taggers = len(bkeys)
     config.n_embed = len(inputs.vocab)
     config.d_outs = [len(a.vocab) for a in answers]
     tagger = newmodel(inputs.vocab.vectors)
+
+    prog_header,progress = util.get_progress_function(config.n_taggers)
 
     if config.epochs:train(tagger,train_iter,test_iter)
     
