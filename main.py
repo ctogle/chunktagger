@@ -1,4 +1,4 @@
-#!/home/cogle/anaconda3/bin/python3.6
+#!/home/athyra/anaconda3/bin/python3.6
 import torch,torchtext
 import os,time,pdb
 import util,dataset,model
@@ -26,7 +26,8 @@ def fields():
     kws = {
         'batch_size' : config.batch_size,
         'device' : config.gpu,
-        'sort' : False,'repeat' : False,
+        'sort_key' : lambda x : len(x.sentence),
+        'repeat' : False,
             }
     train_iter,test_iter = torchtext.data.BucketIterator.splits(dsets,**kws)
     return inputs,answers,train_iter,test_iter
