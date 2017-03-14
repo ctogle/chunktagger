@@ -83,14 +83,16 @@ def train(tagger,train_batcher,test_batcher):
     Test the accuracy of the model on an iterator of test batches when 
     training is complete.'''
     criterion = torch.nn.CrossEntropyLoss()
-    opt = torch.optim.Adam(tagger.parameters(),lr = config.learningrate)
+    #opt = torch.optim.Adam(tagger.parameters(),lr = config.learningrate)
+    #opt = torch.optim.ASGD(tagger.parameters(),lr = config.learningrate)
+    opt = torch.optim.RMSprop(tagger.parameters(),lr = config.learningrate)
     lastaccuracy = 0.0
     improvement_threshold = 0.0
     print('... training model ...')
     print(prog_header)
+    stime = time.time()
     for j in range(config.epochs):
         try:
-            stime = time.time()
             accuracy = train_epoch(tagger,criterion,opt,train_batcher,j,stime)
             improvement = accuracy-lastaccuracy
             lastaccuracy = accuracy
@@ -144,8 +146,8 @@ def work(tagger,inputs,answers):
         input('... press enter to continue ...')
 
 
-prog_header = 'Epoch '+' '*40+'   Complete  Elapsed  Accuracy'
-prog_string = '\r {0:3d}  [{1}{2}]   {3:5.1f}%  {4:6.1f}s   {5:6.2f}%'
+prog_header = 'Epoch '+' '*40+'   Complete   Elapsed   Accuracy'
+prog_string = '\r {0:3d}  [{1}{2}]   {3:5.1f}% {4:8.1f}s {5:9.2f}%'
 def progress(e,b,blen,accu,stime,astr = prog_string,alen = 40):
     '''Provide a progress bar on stdout between batches'''
     p = 100.0*(b+1)/blen
@@ -157,6 +159,10 @@ def progress(e,b,blen,accu,stime,astr = prog_string,alen = 40):
 
 if __name__ == '__main__':
     config = util.gather()
+
+    # WOULD BE NICE TO TRACK PER TASK ACCURACY
+    # WOULD BE NICE TO PRINT IMPROVEMENT DURING WITH PROGRESS BAR
+    # SHOULD CHUNK TAGGING PROCESS BE SPLIT OVER '-' CHARACTER??
 
     inputs,answers,train_iter,test_iter = fields()
 
