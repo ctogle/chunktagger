@@ -83,14 +83,16 @@ def train(tagger,train_batcher,test_batcher):
     Test the accuracy of the model on an iterator of test batches when 
     training is complete.'''
     criterion = torch.nn.CrossEntropyLoss()
-    opt = torch.optim.Adam(tagger.parameters(),lr = config.learningrate)
+    #opt = torch.optim.Adam(tagger.parameters(),lr = config.learningrate)
+    #opt = torch.optim.ASGD(tagger.parameters(),lr = config.learningrate)
+    opt = torch.optim.RMSprop(tagger.parameters(),lr = config.learningrate)
     lastaccuracy = 0.0
     improvement_threshold = 0.0
     print('... training model ...')
     print(prog_header)
+    stime = time.time()
     for j in range(config.epochs):
         try:
-            stime = time.time()
             accuracy = train_epoch(tagger,criterion,opt,train_batcher,j,stime)
             improvement = accuracy-lastaccuracy
             lastaccuracy = accuracy
@@ -157,6 +159,9 @@ def progress(e,b,blen,accu,stime,astr = prog_string,alen = 40):
 
 if __name__ == '__main__':
     config = util.gather()
+
+    # WOULD BE NICE TO TRACK PER TASK ACCURACY
+    # SHOULD CHUNK TAGGING PROCESS BE SPLIT OVER '-' CHARACTER??
 
     inputs,answers,train_iter,test_iter = fields()
 

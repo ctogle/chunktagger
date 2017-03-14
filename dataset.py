@@ -14,7 +14,7 @@ class POSTags(torchtext.data.TabularDataset):
         'test.txt.gz',
         'train.txt.gz',
             )
-    dirname = 'POSTag_data'
+    dirname = '.POSTag_data'
 
 
     @staticmethod
@@ -38,7 +38,7 @@ class POSTags(torchtext.data.TabularDataset):
         piece = [next(zipped)]
         for item in zipped:
             chunktag = item[2]
-            if chunktag.startswith('B') or chunktag.startswith('O'):
+            if [chunktag.startswith(i) for i in ('<pad>','B','O')].count(True):
                 yield tuple(zip(*piece))
                 piece = [item]
             elif chunktag.startswith('I'):
@@ -66,7 +66,9 @@ class POSTags(torchtext.data.TabularDataset):
                 with open(jpath,'w') as jh:
                     for data in zdata:
                         line = {
+                            #'sentence':data[0],
                             'sentence':data[0],
+                            'reversal':data[0][::-1],
                             'postags':data[1],
                             'chunks':data[2],
                                 }
@@ -83,11 +85,10 @@ class POSTags(torchtext.data.TabularDataset):
             os.path.join(path,''),train,validation,test,
             format = 'json',fields = {
                 'sentence': ('sentence',text_field),
+                'reversal': ('reversal',text_field),
                 'postags': ('postags',label_fields[0]),
                 'chunks': ('chunks',label_fields[1]),
                     })
-            #        },
-            #filter_pred = lambda ex: ex.label != '-')
 
 
 class WikiData(POSTags):
@@ -95,7 +96,7 @@ class WikiData(POSTags):
 
     urls = ()
     filenames = ()
-    dirname = 'Wiki_data'
+    dirname = '.Wiki_data'
     queries = (
         'Python (programming language)',
             )
@@ -161,6 +162,7 @@ class WikiData(POSTags):
                     for s in d:
                         line = {
                             'sentence':s,
+                            'reversal':s[::-1],
                             'postags':s,
                             'chunks':s,
                                 }
