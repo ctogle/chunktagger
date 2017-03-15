@@ -186,9 +186,9 @@ class WikiData(POSTags):
         dset = WikiData.splits(inputs,answers)[0]
         batch = torchtext.data.Batch(dset.examples,dset,tagger.config.gpu,False)
         tagger.eval()
-        bdata = batch.postags,batch.chunks
+        bdata = batch.POStags,batch.Chunks
         tdata = [util.adata(o[0],c.size()) for o,c in zip(tagger(batch),bdata)]
-        for i,sentence in enumerate(batch.sentence.transpose(0,1).data):
+        for i,sentence in enumerate(batch.Sentence.transpose(0,1).data):
             words = [[util.iitos(x).strip()] for x in sentence]
             spacer = max([len(w[0]) for w in words])+2
             for j,td in enumerate(tdata):

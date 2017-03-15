@@ -152,6 +152,9 @@ def work(tagger,inputs,answers):
 
 
 def main(config):
+    '''Main loop for use creates Fields using training/test data, instantiates 
+    a model (loading existing parameters if specified), trains the model if 
+    specified, and runs the wiki data work example if specified.'''
     target_field,inputs,answers,train_i,test_i = fields()
 
     fkeys = train_i.dataset.fields.keys()
@@ -161,13 +164,16 @@ def main(config):
     config.target_field = target_field
     config.n_taggers = len(bkeys)
     config.n_embed = len(inputs.vocab)
-    config.d_outs = [len(a.vocab) for a in answers]
+    config.rnn = [config.rnn]*len(answers)
+    config.d_hidden = [config.d_hidden]*len(answers)
+    config.n_layers = [config.n_layers]*len(answers)
+    config.dp_ratio = [config.dp_ratio]*len(answers)
+    config.birnn = [config.birnn]*len(answers)
+    config.d_out = [len(a.vocab) for a in answers]
+
     tagger = newmodel(inputs.vocab.vectors)
-
     prog_header,prog_func = util.get_progress_function(bkeys)
-
     if config.epochs:train(tagger,train_i,test_i,bdataf,prog_header,prog_func)
-    
     if config.wiki:work(tagger,inputs,answers)
 
 
