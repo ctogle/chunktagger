@@ -1,4 +1,4 @@
-#!/home/athyra/anaconda3/bin/python3.6
+#!/home/cogle/anaconda3/bin/python3.6
 import torch,torchtext
 import os,time,pdb
 import util,dataset,model
@@ -23,14 +23,15 @@ def fields(dclass = dataset.POSTags):
                 wv_dim = config.d_embed)
             os.makedirs(os.path.dirname(config.vectorcache),exist_ok = True)
             torch.save(inputs.vocab.vectors,config.vectorcache)
+    target_field = dataset.POSTags.text_fields[0]
     kws = {
         'batch_size' : config.batch_size,
         'device' : config.gpu,
-        'sort_key' : lambda x : len(x.sentence),
+        'sort_key' : lambda x : len(x.__getattribute__(target_field)),
         'repeat' : False,
             }
-    train_iter,test_iter = torchtext.data.BucketIterator.splits(dsets,**kws)
-    return inputs,answers,train_iter,test_iter
+    train_i,test_i = torchtext.data.BucketIterator.splits(dsets,**kws)
+    return target_field,inputs,answers,train_i,test_i
 
 
 def newmodel(word_vectors):
@@ -50,11 +51,11 @@ def newmodel(word_vectors):
     return tagger
 
 
-def train_batch(tagger,crit,opt,batch,v = False):
+def train_batch(tagger,crit,opt,batch,bdataf,v = False):
     '''Perform training on a single batch of examples, 
     returning the number of correct answers'''
     tagger.train();opt.zero_grad()
-    bdata = get_bdata(batch)
+    bdata = bdataf(batch)
     tdata = tagger(batch)
     loss = sum([util.sloss(crit,o[0],c) for o,c in zip(tdata,bdata)])
     loss.backward();opt.step()
@@ -62,28 +63,29 @@ def train_batch(tagger,crit,opt,batch,v = False):
     return [util.ncorrect(o[0],c) for o,c in zip(tdata,bdata)]
 
 
-def train_epoch(tagger,crit,opt,batcher,epoch,stime):
+def train_epoch(tagger,crit,opt,batcher,epoch,stime,bdataf,progf):
     '''Perform a training epoch given an iterator of training batches,
     returning the accuracy of the model on the data set.'''
-    progress(epoch,-1,len(batcher),[-1]*config.n_taggers,0,stime)
+    progf(epoch,-1,len(batcher),[-1]*config.n_taggers,0,stime)
     batcher.init_epoch()
     corrects,total = [0]*config.n_taggers,0
     for j,batch in enumerate(batcher):
-        newcorrects = train_batch(tagger,crit,opt,batch,j == 0 and config.print_example)
+        newcorrects = train_batch(tagger,crit,opt,batch,bdataf,
+                              j == 0 and config.print_example)
         corrects = [x+y for x,y in zip(corrects,newcorrects)]
-        total += batch.batch_size*get_bdata(batch)[0].size()[0]
-        progress(epoch,j,len(batcher),corrects,total,stime)
+        total += batch.batch_size*bdataf(batch)[0].size()[0]
+        progf(epoch,j,len(batcher),corrects,total,stime)
     return 100.0*sum(corrects)/(total*config.n_taggers)
 
 
-def train(tagger,train_batcher,test_batcher):
+def train(tagger,train_i,test_i,bdataf,prog_header,progf):
     '''Perform training of the model given an iterator of training batches.
     Exit the training process early on KeyboardInterrupt, or if accuarcy 
     improvement is sufficiently slow.
     Save the model between training epochs or upon early exit.
     Test the accuracy of the model on an iterator of test batches when 
     training is complete.'''
-    criterion = torch.nn.CrossEntropyLoss()
+    lossf = torch.nn.CrossEntropyLoss()
     if hasattr(torch.optim,config.optimizer):
         optclass = torch.optim.__getattribute__(config.optimizer)
         opt = optclass(tagger.parameters(),lr = config.learningrate)
@@ -95,7 +97,7 @@ def train(tagger,train_batcher,test_batcher):
     stime = time.time()
     for j in range(config.epochs):
         try:
-            accuracy = train_epoch(tagger,criterion,opt,train_batcher,j,stime)
+            accuracy = train_epoch(tagger,lossf,opt,train_i,j,stime,bdataf,progf)
             improvement = accuracy-lastaccuracy
             lastaccuracy = accuracy
             if improvement < improvement_threshold:
@@ -103,38 +105,39 @@ def train(tagger,train_batcher,test_batcher):
                 break
             elif improvement > 0.0:torch.save(tagger,config.modelcache)
         except KeyboardInterrupt:
-            progress(j,0,1,[-1]*config.n_taggers,0,stime)
+            progf(j,0,1,[-1]*config.n_taggers,0,stime)
             print('... training forcefully exited ...')
             torch.save(tagger,config.modelcache)
             break
     print('... testing model ...')
     print(prog_header)
-    accuracy = test(tagger,test_batcher)
+    accuracy = test(tagger,test_i,bdataf,progf)
     print('... final model task-averaged accuracy: %.2f ...' % accuracy)
 
 
-def test_batch(tagger,batch,v = False):
+def test_batch(tagger,batch,bdataf,v = False):
     '''Perform testing on a single batch of test examples,
     returning the number of correct answers.'''
     tagger.eval()
-    bdata = get_bdata(batch)
+    bdata = bdataf(batch)
     tdata = tagger(batch)
     if v:print(util.sprint(util.flatten([util.spair(o,c) for o,c in zip(tdata,bdata)])))
     return [util.ncorrect(o[0],c) for o,c in zip(tdata,bdata)]
 
 
-def test(tagger,batcher):
+def test(tagger,batcher,bdataf,progf):
     '''Perform testing given an iterator of testing batches,
     returning the accuracy of the model on the data set.'''
     stime = time.time()
-    progress(0,-1,len(batcher),[-1]*config.n_taggers,0,stime)
+    progf(0,-1,len(batcher),[-1]*config.n_taggers,0,stime)
     tagger.eval();batcher.init_epoch()
     corrects,total = [0]*config.n_taggers,0
     for j,batch in enumerate(batcher):
-        newcorrects = test_batch(tagger,batch,j == 0 and config.print_example)
+        newcorrects = test_batch(tagger,batch,bdataf,
+                    j == 0 and config.print_example)
         corrects = [x+y for x,y in zip(corrects,newcorrects)]
-        total += batch.batch_size*get_bdata(batch)[0].size()[0]
-        progress(0,j,len(batcher),corrects,total,stime)
+        total += batch.batch_size*bdataf(batch)[0].size()[0]
+        progf(0,j,len(batcher),corrects,total,stime)
     return 100.0*sum(corrects)/(total*config.n_taggers)
 
 
@@ -148,24 +151,28 @@ def work(tagger,inputs,answers):
         input('... press enter to continue ...')
 
 
-if __name__ == '__main__':
-    config = util.gather()
+def main(config):
+    target_field,inputs,answers,train_i,test_i = fields()
 
-    inputs,answers,train_iter,test_iter = fields()
+    fkeys = train_i.dataset.fields.keys()
+    bkeys = [k for k in fkeys if train_i.dataset.fields[k] in answers]
+    bdataf = lambda b : tuple(b.__getattribute__(s) for s in bkeys)
 
-    fkeys = train_iter.dataset.fields.keys()
-    bkeys = [k for k in fkeys if train_iter.dataset.fields[k] in answers]
-    get_bdata = lambda b : tuple(b.__getattribute__(s) for s in bkeys)
-
+    config.target_field = target_field
     config.n_taggers = len(bkeys)
     config.n_embed = len(inputs.vocab)
     config.d_outs = [len(a.vocab) for a in answers]
     tagger = newmodel(inputs.vocab.vectors)
 
-    prog_header,progress = util.get_progress_function(config.n_taggers)
+    prog_header,prog_func = util.get_progress_function(bkeys)
 
-    if config.epochs:train(tagger,train_iter,test_iter)
+    if config.epochs:train(tagger,train_i,test_i,bdataf,prog_header,prog_func)
     
     if config.wiki:work(tagger,inputs,answers)
+
+
+if __name__ == '__main__':
+    config = util.gather()
+    main(config)
 
 

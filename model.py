@@ -62,9 +62,8 @@ class MultiTagger(torch.nn.Module):
 
 
     def forward(self,batch):
-        emb = self.encoder(batch.sentence)
-        #emb = self.encoder(batch.reversal)
-        emb = self.dropout(emb)
+        i = batch.__getattribute__(self.config.target_field)
+        emb = self.dropout(self.encoder(i))
         if self.config.notnested:
             return tuple(t(emb) for t in self.taggers)
         else:

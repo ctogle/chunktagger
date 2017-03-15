@@ -15,8 +15,8 @@ class POSTags(torchtext.data.TabularDataset):
         'train.txt.gz',
             )
     dirname = '.POSTag_data'
-    text_fields = ('sentence','reversal')
-    tag_fields = ('postags','chunks')
+    text_fields = ('Sentence','Reversal')
+    tag_fields = ('POStags','Chunks')
 
 
     @staticmethod
@@ -69,12 +69,12 @@ class POSTags(torchtext.data.TabularDataset):
                     field_set = set(cls.text_fields+cls.tag_fields)
                     for data in zdata:
                         line = {
-                            'sentence':data[0],
-                            'reversal':data[0][::-1],
-                            'postags':data[1],
-                            'chunks':data[2],
+                            'Sentence':data[0],
+                            'Reversal':data[0][::-1],
+                            'POStags':data[1],
+                            'Chunks':data[2],
                                 }
-                        assert set(lines.keys()) == field_set
+                        assert set(line.keys()) == field_set
                         json.dump(line,jh)
                         jh.write(os.linesep)
         return path
@@ -162,10 +162,10 @@ class WikiData(POSTags):
                     d = documents[q] 
                     for s in d:
                         line = {
-                            'sentence':s,
-                            'reversal':s[::-1],
-                            'postags':s,
-                            'chunks':s,
+                            'Sentence':s,
+                            'Reversal':s[::-1],
+                            'POStags':s,
+                            'Chunks':s,
                                 }
                         json.dump(line,jh)
                         jh.write(os.linesep)
