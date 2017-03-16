@@ -12,7 +12,6 @@ def fields(dclass = dataset.POSTags):
     dsets = dataset.POSTags.splits(inputs,answers)
     inputs.build_vocab(*dsets)
     for a in answers:a.build_vocab(dsets[0])
-    util.translations(inputs,answers)
     if config.word_vectors:
         if os.path.isfile(config.vectorcache):
             inputs.vocab.vectors = torch.load(config.vectorcache)
@@ -51,15 +50,15 @@ def newmodel(word_vectors):
     return tagger
 
 
-def train_batch(tagger,crit,opt,batch,bdataf,v = False):
+'''For summing losses across sentences'''
+sloss = lambda c,a,b : sum([c(a[:,i],b[:,i]) for i in range(a.size()[1])])
+def train_batch(tagger,crit,opt,batch,bdataf):
     '''Perform training on a single batch of examples, 
     returning the number of correct answers'''
     tagger.train();opt.zero_grad()
-    bdata = bdataf(batch)
-    tdata = tagger(batch)
-    loss = sum([util.sloss(crit,o[0],c) for o,c in zip(tdata,bdata)])
+    tdata,bdata = tagger(batch),bdataf(batch)
+    loss = sum([sloss(crit,o[0],c) for o,c in zip(tdata,bdata)])
     loss.backward();opt.step()
-    if v:print(util.sprint(util.flatten([util.spair(o,c) for o,c in zip(tdata,bdata)])))
     return [util.ncorrect(o[0],c) for o,c in zip(tdata,bdata)]
 
 
@@ -70,11 +69,11 @@ def train_epoch(tagger,crit,opt,batcher,epoch,stime,bdataf,progf):
     batcher.init_epoch()
     corrects,total = [0]*config.n_taggers,0
     for j,batch in enumerate(batcher):
-        newcorrects = train_batch(tagger,crit,opt,batch,bdataf,
-                              j == 0 and config.print_example)
+        newcorrects = train_batch(tagger,crit,opt,batch,bdataf)
         corrects = [x+y for x,y in zip(corrects,newcorrects)]
         total += batch.batch_size*bdataf(batch)[0].size()[0]
         progf(epoch,j,len(batcher),corrects,total,stime)
+        if time.time()-stime > config.timeout:raise KeyboardInterrupt
     return 100.0*sum(corrects)/(total*config.n_taggers)
 
 
@@ -88,7 +87,7 @@ def train(tagger,train_i,test_i,bdataf,prog_header,progf):
     lossf = torch.nn.CrossEntropyLoss()
     if hasattr(torch.optim,config.optimizer):
         optclass = torch.optim.__getattribute__(config.optimizer)
-        opt = optclass(tagger.parameters(),lr = config.learningrate)
+        opt = optclass(tagger.parameters(),lr = config.lr)
     else:raise ValueError('... unavailable optimizer: %s ...' % config.optimizer)
     lastaccuracy = 0.0
     improvement_threshold = 0.0
@@ -115,13 +114,11 @@ def train(tagger,train_i,test_i,bdataf,prog_header,progf):
     print('... final model task-averaged accuracy: %.2f ...' % accuracy)
 
 
-def test_batch(tagger,batch,bdataf,v = False):
+def test_batch(tagger,batch,bdataf):
     '''Perform testing on a single batch of test examples,
     returning the number of correct answers.'''
     tagger.eval()
-    bdata = bdataf(batch)
-    tdata = tagger(batch)
-    if v:print(util.sprint(util.flatten([util.spair(o,c) for o,c in zip(tdata,bdata)])))
+    tdata,bdata = tagger(batch),bdataf(batch)
     return [util.ncorrect(o[0],c) for o,c in zip(tdata,bdata)]
 
 
@@ -133,19 +130,18 @@ def test(tagger,batcher,bdataf,progf):
     tagger.eval();batcher.init_epoch()
     corrects,total = [0]*config.n_taggers,0
     for j,batch in enumerate(batcher):
-        newcorrects = test_batch(tagger,batch,bdataf,
-                    j == 0 and config.print_example)
+        newcorrects = test_batch(tagger,batch,bdataf)
         corrects = [x+y for x,y in zip(corrects,newcorrects)]
         total += batch.batch_size*bdataf(batch)[0].size()[0]
         progf(0,j,len(batcher),corrects,total,stime)
     return 100.0*sum(corrects)/(total*config.n_taggers)
 
 
-def work(tagger,inputs,answers):
+def work(config,tagger,inputs,answers):
     '''As an example of totally distinct data usage, use the WikiData class 
     to iterate over tagged wiki sentences, printing the chunk phrases.'''
     print('... tag results for wiki data sentence by sentence ...')
-    for sentence in dataset.WikiData.gen(tagger,inputs,answers):
+    for sentence in dataset.WikiData.gen(config,tagger,inputs,answers):
         for phrase in dataset.WikiData.chunk(sentence):
             print(' '.join(phrase[0]),'\t',','.join(phrase[2]))
         input('... press enter to continue ...')
@@ -164,17 +160,13 @@ def main(config):
     config.target_field = target_field
     config.n_taggers = len(bkeys)
     config.n_embed = len(inputs.vocab)
-    config.rnn = [config.rnn]*len(answers)
     config.d_hidden = [config.d_hidden]*len(answers)
-    config.n_layers = [config.n_layers]*len(answers)
-    config.dp_ratio = [config.dp_ratio]*len(answers)
-    config.birnn = [config.birnn]*len(answers)
     config.d_out = [len(a.vocab) for a in answers]
 
     tagger = newmodel(inputs.vocab.vectors)
-    prog_header,prog_func = util.get_progress_function(bkeys)
-    if config.epochs:train(tagger,train_i,test_i,bdataf,prog_header,prog_func)
-    if config.wiki:work(tagger,inputs,answers)
+    prog_head,prog_func = util.get_progress_function(bkeys)
+    if config.epochs:train(tagger,train_i,test_i,bdataf,prog_head,prog_func)
+    if config.wiki:work(config,tagger,inputs,answers)
 
 
 if __name__ == '__main__':

@@ -1,4 +1,4 @@
-import torchtext
+import torch,torchtext
 import wikipedia,os,re,urllib,json,gzip,pdb
 import util
 
@@ -15,7 +15,7 @@ class POSTags(torchtext.data.TabularDataset):
         'train.txt.gz',
             )
     dirname = '.POSTag_data'
-    text_fields = ('Sentence','Reversal')
+    text_fields = ('Sentence',)
     tag_fields = ('POStags','Chunks')
 
 
@@ -52,6 +52,12 @@ class POSTags(torchtext.data.TabularDataset):
         yield tuple(zip(*piece))
 
 
+    @staticmethod
+    def jsonline(data):
+        line = {'Sentence':data[0],'POStags':data[1],'Chunks':data[2]}
+        return line
+
+
     @classmethod
     def download_or_unzip(cls,root):
         path = os.path.join(root,cls.dirname)
@@ -65,15 +71,10 @@ class POSTags(torchtext.data.TabularDataset):
             zdata = POSTags.unpack(zpath)
             jpath = zpath[:zpath.rfind('.')]+'.json'
             if not os.path.exists(jpath):
+                field_set = set(POSTags.text_fields+POSTags.tag_fields)
                 with open(jpath,'w') as jh:
-                    field_set = set(cls.text_fields+cls.tag_fields)
                     for data in zdata:
-                        line = {
-                            'Sentence':data[0],
-                            'Reversal':data[0][::-1],
-                            'POStags':data[1],
-                            'Chunks':data[2],
-                                }
+                        line = cls.jsonline(data)
                         assert set(line.keys()) == field_set
                         json.dump(line,jh)
                         jh.write(os.linesep)
@@ -137,6 +138,14 @@ class WikiData(POSTags):
         return sentences
 
 
+    @staticmethod
+    def jsonline(data):
+        field_set = set(WikiData.text_fields+WikiData.tag_fields)
+        line = {'Sentence':data,'POStags':data,'Chunks':data}
+        assert set(line.keys()) == field_set
+        return line
+
+
     @classmethod
     def download_or_unzip(cls,root):
         path = os.path.join(root,cls.dirname)
@@ -157,16 +166,13 @@ class WikiData(POSTags):
                         documents[query].append(sentence.split(' '))
         jpath = os.path.join(path,'wiki.txt.json')
         if not os.path.exists(jpath):
+            field_set = set(WikiData.text_fields+WikiData.tag_fields)
             with open(jpath,'w') as jh:
                 for q in documents:
                     d = documents[q] 
                     for s in d:
-                        line = {
-                            'Sentence':s,
-                            'Reversal':s[::-1],
-                            'POStags':s,
-                            'Chunks':s,
-                                }
+                        line = cls.jsonline(s)
+                        assert set(line.keys()) == field_set
                         json.dump(line,jh)
                         jh.write(os.linesep)
         return path
@@ -179,21 +185,23 @@ class WikiData(POSTags):
 
 
     @staticmethod
-    def gen(tagger,inputs,answers):
+    def gen(config,tagger,inputs,answers):
         '''As an example of totally distinct data usage, create a Dataset of
         Wikipedia page sentences, a single Batch for all of the sentences, 
         and run the model on them. Yield the tag results of each sentence.'''
+        iitos = lambda x : inputs.vocab.itos[x].center(8)
+        aitos = lambda j,x : answers[j].vocab.itos[x].center(8)
         dset = WikiData.splits(inputs,answers)[0]
-        batch = torchtext.data.Batch(dset.examples,dset,tagger.config.gpu,False)
+        batch = torchtext.data.Batch(dset.examples,dset,config.gpu,False)
         tagger.eval()
-        bdata = batch.POStags,batch.Chunks
+        bdata = [batch.__getattribute__(k) for k in WikiData.tag_fields]
         tdata = [util.adata(o[0],c.size()) for o,c in zip(tagger(batch),bdata)]
         for i,sentence in enumerate(batch.Sentence.transpose(0,1).data):
-            words = [[util.iitos(x).strip()] for x in sentence]
+            words = [[iitos(x).strip()] for x in sentence]
             spacer = max([len(w[0]) for w in words])+2
             for j,td in enumerate(tdata):
                 tdat = td.transpose(0,1)
-                tags = [util.aitos(j,x).strip() for x in tdat[i,:]]
+                tags = [aitos(j,x).strip() for x in tdat[i,:]]
                 words = [l+[t] for l,t in zip(words,tags)]
             reconstructed = []
             for w in words:

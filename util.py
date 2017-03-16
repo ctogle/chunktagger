@@ -2,29 +2,15 @@ import torch
 import argparse,functools,os,time
 
 
+'''For accessing answer indices'''
+adata = lambda a,s : torch.max(a,2)[1].view(s).data
 '''For counting correct answers'''
 ncorrect = lambda a,c : (adata(a,c.size()) == c.data).sum()
-'''For reaching answer indices'''
-adata = lambda a,s : torch.max(a,2)[1].view(s).data
-'''For summing losses across sentences'''
-sloss = lambda c,a,b : sum([c(a[:,i],b[:,i]) for i in range(a.size()[1])])
-'''For printing of examples'''
-flatten = lambda seqs : [item for seq in seqs for item in seq]
-spair = lambda o,c : (adata(o[0],c.size())[:,0],c.data[:,0])
-sline = lambda a,b,c,d : '\t::'+aitos(0,a)+'::'+aitos(0,b)+'::'+aitos(1,c)+'::'+aitos(1,d)+'::'
-sprint = lambda seq : '\n'.join([sline(*p) for p in zip(*seq)])
-
-
-iitos,aitos = None,None
-def translations(inputs,answers):
-    global iitos,aitos
-    iitos = lambda x : inputs.vocab.itos[x].center(8)
-    aitos = lambda j,x : answers[j].vocab.itos[x].center(8)
 
 
 def get_progress_function(tasks,barlength = 20):
     '''Provide a function for a progress bar on 
-    stdout between batches and associated header'''
+    stdout between batches and associated header.'''
     barlength -= 6
     assert barlength > 1
     mean = lambda l : sum(l)/len(l) if l else 0
@@ -51,6 +37,7 @@ def get_progress_function(tasks,barlength = 20):
 
 
 def gather():
+    '''Provide namespace of all run options specified.'''
     cachedir = os.path.join(os.getcwd(),'.cache')
     vectorcache = os.path.join(cachedir,'input_vectors.%s.pt')
     modelcache = os.path.join(cachedir,'model_snapshot.pt')
@@ -68,15 +55,14 @@ def gather():
     parser.add_argument('--d_hidden',type = int,default = 100)
     parser.add_argument('--n_layers',type = int,default = 1)
     parser.add_argument('--emb_dp_ratio',type = float,default = 0.2)
-    parser.add_argument('--dp_ratio',type = float,default = 0.2)
+    parser.add_argument('--rnn_dp_ratio',type = float,default = 0.2)
     parser.add_argument('--birnn',action = 'store_true')
-    parser.add_argument('--notnested',action = 'store_true')
     parser.add_argument('--epochs',type = int,default = 100)
+    parser.add_argument('--timeout',type = int,default = 900)
     parser.add_argument('--batch_size',type = int,default = 128)
     parser.add_argument('--optimizer',type = str,default = 'RMSprop')
-    parser.add_argument('--learningrate',type = float,default = 0.1)
+    parser.add_argument('--lr',type = float,default = 0.1)
     parser.add_argument('--gpu',type = int,default = -1)
-    parser.add_argument('--print_example',action = 'store_true')
     parser.add_argument('--wiki',action = 'store_true')
     config = parser.parse_args()
     config.vectorcache = config.vectorcache % config.word_vectors
