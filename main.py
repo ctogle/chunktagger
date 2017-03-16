@@ -137,16 +137,6 @@ def test(tagger,batcher,bdataf,progf):
     return 100.0*sum(corrects)/(total*config.n_taggers)
 
 
-def work(config,tagger,inputs,answers):
-    '''As an example of totally distinct data usage, use the WikiData class 
-    to iterate over tagged wiki sentences, printing the chunk phrases.'''
-    print('... tag results for wiki data sentence by sentence ...')
-    for sentence in dataset.WikiData.gen(config,tagger,inputs,answers):
-        for phrase in dataset.WikiData.chunk(sentence):
-            print(' '.join(phrase[0]),'\t',','.join(phrase[2]))
-        input('... press enter to continue ...')
-
-
 def main(config):
     '''Main loop for use creates Fields using training/test data, instantiates 
     a model (loading existing parameters if specified), trains the model if 
@@ -166,7 +156,9 @@ def main(config):
     tagger = newmodel(inputs.vocab.vectors)
     prog_head,prog_func = util.get_progress_function(bkeys)
     if config.epochs:train(tagger,train_i,test_i,bdataf,prog_head,prog_func)
-    if config.wiki:work(config,tagger,inputs,answers)
+    if config.wiki:
+        import wikiwork
+        wikiwork.work(config,tagger,inputs,answers)
 
 
 if __name__ == '__main__':
