@@ -1,6 +1,7 @@
+#!/home/cogle/anaconda3/bin/python3.6
 import torchtext
-import os,wikipedia,json,pdb
-import dataset,util
+import os,re,wikipedia,json,pdb
+import dataset,util,main
 
 
 class WikiData(dataset.POSTags):
@@ -105,7 +106,8 @@ class WikiData(dataset.POSTags):
         batch = torchtext.data.Batch(dset.examples,dset,config.gpu,False)
         tagger.eval()
         bdata = [batch.__getattribute__(k) for k in WikiData.tag_fields]
-        tdata = [util.adata(o[0],c.size()) for o,c in zip(tagger(batch),bdata)]
+        i = batch.__getattribute__(tagger.config.target_field)
+        tdata = [util.adata(o[0],c.size()) for o,c in zip(tagger(i),bdata)]
         for i,sentence in enumerate(batch.Sentence.transpose(0,1).data):
             words = [[iitos(x).strip()] for x in sentence]
             spacer = max([len(w[0]) for w in words])+2
@@ -125,8 +127,8 @@ def work(config,tagger,inputs,answers):
     '''As an example of totally distinct data usage, use the WikiData class 
     to iterate over tagged wiki sentences, printing the chunk phrases.'''
     print('... tag results for wiki data sentence by sentence ...')
+    graphs = []
     for sentence in WikiData.gen(config,tagger,inputs,answers):
-      
         graph = [[],[]]
 
         for phrase in WikiData.chunk(sentence):
@@ -137,6 +139,10 @@ def work(config,tagger,inputs,answers):
                 print('read , ...')
                 continue
             if phrase == (('and',),('CC',),('O',)):
+                print('read and ...')
+                continue
+            if phrase == (('or',),('CC',),('O',)):
+                # need to handle: "rather than x or y"
                 print('read and ...')
                 continue
             if phrase == (('.',),('.',),('O',)):
@@ -159,9 +165,29 @@ def work(config,tagger,inputs,answers):
             elif phrasetag == 'PP':
                 edge = (words,postags,phrasetag,len(graph[0])-1)
                 graph[1].append(edge)
+            elif phrasetag == 'ADJP':
+                print('ADJP poorly handled')
+                edge = (words,postags,phrasetag,len(graph[0])-1)
+                graph[1].append(edge)
+            elif phrasetag == 'ADVP':
+                print('ADVP poorly handled')
+                edge = (words,postags,phrasetag,len(graph[0])-1)
+                graph[1].append(edge)
+            elif phrasetag == 'SBAR':
+                print('SBAR poorly handled')
+                edge = (words,postags,phrasetag,len(graph[0])-1)
+                graph[1].append(edge)
             else:pdb.set_trace()
 
-        input('... press enter to continue ...')
-        #pdb.set_trace()
+        #input('... press enter to continue ...')
+        graphs.append(graph)
+
+    '''Resolve each graph into a set of simplified, independent sentences.'''
+    pdb.set_trace()
+
+
+if __name__ == '__main__':
+    tagger = main.main()
+    work(tagger.config,tagger,*tagger.config.fields)
 
 

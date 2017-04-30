@@ -1,5 +1,5 @@
 import torch
-import argparse,functools,os,time
+import argparse,functools,os,time,pdb
 
 
 '''For accessing answer indices'''
@@ -20,15 +20,18 @@ def get_progress_function(tasks,barlength = 20):
     prog_string = '\r {0:3d}  [{1}{2}{3:5.1f}%] {4:8.1f}s {5:9.2f}%'
     accu_string = [accu(j) for j in range(len(tasks))]
     prog_string += redlist(accu_string)
+    truncate = lambda s,l : s[:l] if len(s) > l else s
 
     def progress(epoch,batchnum,batchcnt,corrects,total,stime):
+        r,c = os.popen('stty size','r').read().split()
         percent = 100.0*(batchnum+1)/batchcnt
         elapsed = time.time()-stime
         denom = 0 if total == 0 else 100.0/total
         accuracies = mullist(denom,[mean(corrects)]+corrects)
         n = int(percent*barlength//100)
         fmat = [epoch+1,'|'*n,'-'*(barlength-n),percent,elapsed]+accuracies
-        print(prog_string.format(*fmat),end = '\r' if percent < 100 else '\n')
+        end = '\r' if percent < 100 else '\n'
+        print(truncate(prog_string.format(*fmat),int(c)),end = end)
 
     prog_header = 'Epoch '+' '*(barlength+11)+'Elapsed   Accuracy'
     accu_header = ['   {0}'.format(tasks[j]) for j in range(len(tasks))]
@@ -47,23 +50,24 @@ def gather():
     parser.add_argument('--modelcache',type = str,default = modelcache)
     parser.add_argument('--trainset',type = str,default = 'train.txt.gz')
     parser.add_argument('--testset',type = str,default = 'test.txt.gz')
-    parser.add_argument('--fresh',action = 'store_true')
     parser.add_argument('--lower',action = 'store_true')
+    parser.add_argument('--fresh',action = 'store_true')
     parser.add_argument('--word_vectors',type = str,default = 'glove.42B')
     parser.add_argument('--d_embed',type = int,default = 300)
     parser.add_argument('--rnn',type = str,default = 'GRU')
-    parser.add_argument('--d_hidden',type = int,default = 100)
+    parser.add_argument('--d_hidden',type = str,default = '100,100')
     parser.add_argument('--n_layers',type = int,default = 5)
     parser.add_argument('--emb_dp_ratio',type = float,default = 0.2)
     parser.add_argument('--rnn_dp_ratio',type = float,default = 0.2)
     parser.add_argument('--birnn',action = 'store_true')
-    parser.add_argument('--epochs',type = int,default = 100)
+    parser.add_argument('--epochs',type = int,default = 0)
     parser.add_argument('--timeout',type = int,default = 10000)
+    parser.add_argument('--targetaccuracy',type = int,default = 100)
     parser.add_argument('--batch_size',type = int,default = 128)
     parser.add_argument('--optimizer',type = str,default = 'RMSprop')
     parser.add_argument('--lr',type = float,default = 0.0005)
     parser.add_argument('--gpu',type = int,default = -1)
-    parser.add_argument('--wiki',action = 'store_true')
+    parser.add_argument('--forest',action = 'store_true')
     config = parser.parse_args()
     config.vectorcache = config.vectorcache % config.word_vectors
     return config

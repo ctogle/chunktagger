@@ -1,6 +1,5 @@
-import torchtext
-import wikipedia,os,re,urllib,json,gzip,pdb
-import util
+import torch,torchtext
+import os,urllib,json,gzip,pdb
 
 
 class POSTags(torchtext.data.TabularDataset):
@@ -91,5 +90,35 @@ class POSTags(torchtext.data.TabularDataset):
         return super(POSTags,cls).splits(
             os.path.join(path,''),train,validation,test,
             format = 'json',fields = fields)
+
+
+def fields(config,dclass = POSTags):
+    '''Create field objects and train and test data sets.
+    Use the datasets to initialize the vocab objects of the fields.'''
+    inputs = torchtext.data.Field(lower = config.lower)
+    answers = [torchtext.data.Field() for x in range(len(dclass.tag_fields))]
+    dsets = dclass.splits(inputs,answers)
+    inputs.build_vocab(*dsets)
+    for a in answers:a.build_vocab(dsets[0])
+    if config.word_vectors:
+        if os.path.isfile(config.vectorcache):
+            inputs.vocab.vectors = torch.load(config.vectorcache)
+        else:
+            inputs.vocab.load_vectors(
+                wv_dir = config.cachedir,
+                wv_type = config.word_vectors,
+                wv_dim = config.d_embed)
+            os.makedirs(os.path.dirname(config.vectorcache),exist_ok = True)
+            torch.save(inputs.vocab.vectors,config.vectorcache)
+    config.target_field = dclass.text_fields[0]
+    config.n_embed = len(inputs.vocab)
+    config.d_out = tuple(len(a.vocab) for a in answers)
+    kws = {
+        'batch_size' : config.batch_size,'device' : config.gpu,'repeat' : False,
+        'sort_key' : lambda x : len(x.__getattribute__(config.target_field)),
+            }
+    train_i,test_i = torchtext.data.BucketIterator.splits(dsets,**kws)
+    data = {'fields' : (inputs,answers),'dataset_iters' : (train_i,test_i)}
+    return data
 
 
